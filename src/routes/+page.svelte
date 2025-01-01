@@ -1,18 +1,32 @@
 <script>
-	import { signIn } from "@auth/sveltekit/client"
+	import { signIn, signOut } from "@auth/sveltekit/client"
 	import { Button } from "$lib/components/ui/button/index.ts";
 	import * as Card from "$lib/components/ui/card/index.ts";
 	import { Label } from "$lib/components/ui/label/index.ts";
 	import { Input } from "$lib/components/ui/input/index.ts";
 	import { Icons } from "$lib/components/docs/icons/index.ts";
-
+	import {SignOut} from '@auth/sveltekit/components';
+	import { page } from "$app/stores"
 
 	let password = "";
 	let email = "";
-	let name = "";
 </script>
 
 <div class="flex flex-col items-center justify-center h-screen">
+	{#if $page.data.session}
+		<img
+			src={$page.data.session.user?.image ?? 'https://img-cdn.pixlr.com/image-generator/history/65bb506dcb310754719cf81f/ede935de-1138-4f66-8ed7-44bd16efc709/medium.webp'}
+			class="avatar"
+			alt="User Avatar"
+		/>
+		<span class="signedInText">
+      <small>Signed in as</small><br />
+      <strong>{$page.data.session.user?.name ?? "User"}</strong>
+    </span>
+		<SignOut>
+			<div slot="submitButton" class="buttonPrimary">Sign out</div>
+		</SignOut>
+		{:else}
 <Card.Root>
 	<Card.Header class="space-y-1">
 		<Card.Title class="text-2xl">Sign In!</Card.Title>
@@ -38,10 +52,6 @@
 			</div>
 		</div>
 		<div class="grid gap-2">
-			<Label for="name">Full Name</Label>
-			<Input id="name" type="text" placeholder="John Doe" bind:value={name} />
-		</div>
-		<div class="grid gap-2">
 			<Label for="email">Email</Label>
 			<Input id="email" type="email" placeholder="m@example.com" bind:value={email}/>
 		</div>
@@ -51,8 +61,9 @@
 		</div>
 	</Card.Content>
 	<Card.Footer>
-		<Button class="w-full" on:click={() => signIn("credentials", { name, email, password })}>Create account</Button>
+		<Button class="w-full" on:click={() => signIn("credentials", { email, password })}>Create account</Button>
 	</Card.Footer>
 </Card.Root>
+		{/if}
 </div>
 
