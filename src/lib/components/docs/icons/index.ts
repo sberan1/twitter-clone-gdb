@@ -21,7 +21,7 @@ import Trash from "lucide-svelte/icons/trash";
 import TriangleAlert from "lucide-svelte/icons/triangle-alert";
 import User from "lucide-svelte/icons/user";
 import X from "lucide-svelte/icons/x";
-
+import Heart from "lucide-svelte/icons/heart";
 
 import GitHub from "./github.svelte";
 import Google from "./google.svelte";
@@ -57,5 +57,6 @@ export const Icons = {
 	laptop: Laptop,
 	gitHub: GitHub,
 	google: Google,
-	discord: Discord
+	discord: Discord,
+	heart: Heart
 }

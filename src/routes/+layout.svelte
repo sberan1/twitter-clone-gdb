@@ -5,14 +5,11 @@
 	import { Button } from '$lib/components/ui/button/index.ts';
 	import { page } from '$app/stores';
 	import { signOut } from "@auth/sveltekit/client"
+	import { getShortNames } from '$lib/helpers';
 
 
 	let { children } = $props();
 
-	function getShortNames() {
-		const a = ($page.data.session?.user?.name).split(' ');
-		return a[0][0].toLocaleUpperCase() + (a[1][0].toLocaleUpperCase() ?? '');
-	}
 </script>
 
 {#if $page.data.session}
@@ -33,7 +30,7 @@
 						<Avatar class="w-10 rounded-full">
 							<AvatarImage src={$page.data.session?.user?.image} alt="Icon" />
 							<AvatarFallback>
-								{getShortNames()}
+								{getShortNames($page.data.session?.user?.name)}
 							</AvatarFallback>
 						</Avatar>
 					</Button>
