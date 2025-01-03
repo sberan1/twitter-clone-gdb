@@ -14,6 +14,7 @@ export type PostAndUser = {
 	commentCount?: number;
 	liked?: boolean;
 	shares?: number;
+	comments?: Comment[];
 };
 
 export type Post = {
@@ -31,6 +32,15 @@ export type User = {
 	pwHash?: string;
 };
 
+export type Comment = {
+	id?: string;
+	content: string;
+	createdAt?: string;
+	likes?: number;
+	liked?: boolean;
+	user: User;
+};
+
 export async function getPosts(userEmail: string | null | undefined): Promise<
 	{
 		post: Post;
@@ -45,8 +55,9 @@ export async function getPosts(userEmail: string | null | undefined): Promise<
 			`
       MATCH (u:User)-[:POSTED]->(p:Post)
       OPTIONAL MATCH (p)<-[l:LIKED]-()
+      OPTIONAL MATCH (p)-[:HAS_COMMENT]->(c:Comment)
       OPTIONAL MATCH (p)<-[userLike:LIKED]-(currentUser:User {email: $userEmail})
-      RETURN p, u, COUNT(l) AS likes, COUNT(userLike) > 0 AS liked
+      RETURN p, u, COUNT(l) AS likes, COUNT(userLike) > 0 AS liked, COUNT(c) AS commentCount
       `,
 			{ userEmail }
 		);
@@ -54,7 +65,8 @@ export async function getPosts(userEmail: string | null | undefined): Promise<
 			post: record.get('p').properties,
 			user: record.get('u').properties,
 			likes: record.get('likes').toNumber(),
-			liked: record.get('liked')
+			liked: record.get('liked'),
+			commentCount: record.get('commentCount').toNumber()
 		}));
 	} finally {
 		await session.close();
@@ -124,8 +136,9 @@ export async function getPost(postId: string | undefined, userEmail: string | nu
 			`
       MATCH (u:User)-[:POSTED]->(p:Post {id: $postId})
       OPTIONAL MATCH (p)<-[l:LIKED]-()
+      OPTIONAL MATCH (p)-[:HAS_COMMENT]->(c:Comment)
       OPTIONAL MATCH (p)<-[userLike:LIKED]-(currentUser:User {email: $userEmail})
-      RETURN p, u, COUNT(l) AS likes, COUNT(userLike) > 0 AS liked
+      RETURN p, u, COUNT(l) AS likes, COUNT(userLike) > 0 AS liked, COUNT(c) AS commentCount
       `,
 			{ postId, userEmail }
 		);
@@ -139,8 +152,94 @@ export async function getPost(postId: string | undefined, userEmail: string | nu
 			post: record.get('p').properties,
 			user: record.get('u').properties,
 			likes: record.get('likes').toNumber(),
-			liked: record.get('liked')
+			liked: record.get('liked'),
+			commentCount: record.get('commentCount').toNumber(),
+			comments: await getComments(postId, userEmail)
 		};
+	} finally {
+		await session.close();
+	}
+}
+
+export async function createComment(postId: string, userEmail: string, content: string): Promise<Comment> {
+	const session = driver.session();
+	const commentId = uuid();
+	const createdAt = new Date().toISOString();
+	try {
+		const result = await session.run(
+			`
+      MATCH (u:User {email: $userEmail}), (p:Post {id: $postId})
+      CREATE (c:Comment {id: $commentId, content: $content, createdAt: $createdAt})
+      CREATE (u)-[:COMMENTED]->(c)
+      CREATE (p)-[:HAS_COMMENT]->(c)
+      RETURN c, u
+      `,
+			{ userEmail, postId, commentId, content, createdAt }
+		);
+		const record = result.records[0];
+		return {
+			id: record.get('c').properties.id,
+			content: record.get('c').properties.content,
+			createdAt: record.get('c').properties.createdAt,
+			user: record.get('u').properties
+		};
+	} finally {
+		await session.close();
+	}
+}
+
+export async function toggleCommentLike(commentId: string, userEmail: string, like: boolean): Promise<{ liked: boolean }> {
+	const session = driver.session();
+	try {
+		if (like) {
+			// Create a like if it doesn't exist and add the createdAt property
+			await session.run(
+				`
+        MATCH (u:User {email: $userEmail}), (c:Comment {id: $commentId})
+        MERGE (u)-[l:LIKED]->(c)
+        ON CREATE SET l.createdAt = timestamp()
+        `,
+				{ userEmail, commentId }
+			);
+			return { liked: true };
+		} else {
+			// Delete the like if it exists
+			await session.run(
+				`
+        MATCH (u:User {email: $userEmail})-[l:LIKED]->(c:Comment {id: $commentId})
+        DELETE l
+        `,
+				{ userEmail, commentId }
+			);
+			return { liked: false };
+		}
+	} finally {
+		await session.close();
+	}
+}
+
+export async function getComments(postId: string, userEmail: string | null | undefined): Promise<Comment[]> {
+	const session = driver.session();
+	try {
+		const result = await session.run(
+			`
+      MATCH (p:Post {id: $postId})-[:HAS_COMMENT]->(c:Comment)
+      MATCH (u:User)-[:COMMENTED]->(c)
+      OPTIONAL MATCH (c)<-[l:LIKED]-()
+      OPTIONAL MATCH (c)<-[userLike:LIKED]-(currentUser:User {email: $userEmail})
+      RETURN c, u, COUNT(l) AS likes, COUNT(userLike) > 0 AS liked
+      ORDER BY c.createdAt DESC
+      `,
+			{ postId, userEmail }
+		);
+		return result.records.map((record) => ({
+			id: record.get('c').properties.id,
+			content: record.get('c').properties.content,
+			createdAt: record.get('c').properties.createdAt,
+			user: record.get('u').properties,
+			likes: record.get('likes').toNumber(),
+			liked: record.get('liked')
+		}));
 	} finally {
 		await session.close();
 	}
