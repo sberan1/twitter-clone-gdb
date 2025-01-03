@@ -7,7 +7,6 @@
 	import { signOut } from "@auth/sveltekit/client"
 	import { getShortNames } from '$lib/helpers';
 
-
 	let { children } = $props();
 
 </script>
@@ -15,15 +14,13 @@
 {#if $page.data.session}
 <nav>
 	<div class="navbar bg-base-100">
-		<div class="flex-1">
+		<div class="flex-1 mx-5">
 			<a href="/">
 				<h1> Twitter clone </h1>
 			</a>
 		</div>
 		<div class="flex-none gap-2">
-			<div class="form-control">
-				<input type="text" placeholder="Search" class="input input-bordered w-24 md:w-auto" />
-			</div>
+
 			<DropdownMenu>
 				<DropdownMenuTrigger asChild let:builder>
 					<Button variant="ghost" builders={[builder]} class="relative w-10 rounded-full">

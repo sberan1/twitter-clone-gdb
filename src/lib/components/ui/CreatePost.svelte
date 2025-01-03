@@ -16,8 +16,8 @@
 
 <Card class="w-2/4 my-5">
 		<CardContent class="w-full ">
-			<Input placeholder="Your post title here."  bind:value={title}/>
-			<Textarea placeholder="Type your message here." bind:value={content} />
+			<Input placeholder="Your post title here." class="my-3" bind:value={title}/>
+			<Textarea placeholder="Type your message here." class="mb-3" bind:value={content} />
 			<Button class="w-full" on:click={
 				async () => {
 					const post = await fetch('/api/create-post',{
