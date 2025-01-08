@@ -6,12 +6,13 @@
 	import { page } from '$app/stores';
 	import { signOut } from "@auth/sveltekit/client"
 	import { getShortNames } from '$lib/helpers';
+	import { goto } from '$app/navigation';
 
 	let { children } = $props();
 
 </script>
 
-{#if $page.data.session}
+{#if $page.data.session?.user}
 <nav>
 	<div class="navbar bg-base-100">
 		<div class="flex-1 mx-5">
@@ -52,7 +53,11 @@
 					</DropdownMenuGroup>
 					<DropdownMenuSeparator />
 					<DropdownMenuItem>
-						<Button variant="outline" class="w-full" on:click={signOut()}>
+						<Button variant="outline" class="w-full" on:click={
+						async () => {
+							await signOut();
+							await goto('/');
+						}}>
 							Sign out
 						</Button>
 					</DropdownMenuItem>

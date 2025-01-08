@@ -48,7 +48,7 @@
 		</div>
 	</CardTitle>
 	<CardContent>{comment.content}</CardContent>
-	<CardContent><div class="flex items-center my-3">
+	<CardContent><div class="flex items-center my-1">
 	<button onclick={async () => {await toggleLike()}}>
 		<Icons.heart class="h-8 w-8 mx-2 {comment.liked ? 'fill-red-500' : ''}" />
 	</button>

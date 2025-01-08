@@ -5,6 +5,7 @@ import { Input } from '$lib/components/ui/input/index.ts';
 import { Icons } from '$lib/components/docs/icons/index.ts';
 import CreatePost from '$lib/components/ui/CreatePost.svelte';
 import { Button } from '$lib/components/ui/button/index.ts';
+import  * as Card from '$lib/components/ui/card/index.ts';
 import Post from '$lib/components/ui/Post.svelte';
 import {page} from '$app/stores';
 
@@ -13,24 +14,25 @@ export let data;
 let password = "";
 let email = "";
 
-function logData(){
-	console.log(data);
-}
 </script>
 
 
-<div class="flex flex-col items-center justify-start h-screen">
 	{#if $page.data.session}
+		<div class="flex flex-col items-center justify-start h-screen">
 		<CreatePost />
-		{#each data.posts as postData}
+		{#each data.posts ?? [] as postData}
 			<Post {postData}></Post>
 		{/each}
-		<Button on:click={logData()}>log</Button>
+		</div>
 	{:else}
+		<div class="flex flex-col items-center justify-center h-screen">
 		<Card.Root>
 			<Card.Header class="space-y-1">
 				<Card.Title class="text-2xl">Sign In!</Card.Title>
-				<Card.Description>Enter your email below to create or login to your account</Card.Description>
+				<Card.Description>Enter your email below to create or login to your account.<br/>
+					Don't have an account? Click <a class="underline font-bold" href="/register">here</a> to register.
+				</Card.Description>
+
 			</Card.Header>
 			<Card.Content class="grid gap-4">
 				<div class="grid grid-cols-2 gap-6">
@@ -61,8 +63,8 @@ function logData(){
 				</div>
 			</Card.Content>
 			<Card.Footer>
-				<Button class="w-full" on:click={() => signIn("credentials", { email, password })}>Create account</Button>
+				<Button class="w-full" on:click={() => signIn("credentials", { email, password })}>Sign In</Button>
 			</Card.Footer>
 		</Card.Root>
+		</div>
 	{/if}
-</div>

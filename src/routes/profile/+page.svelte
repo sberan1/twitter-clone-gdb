@@ -9,7 +9,6 @@
 </script>
 <div class="flex flex-col items-center justify-center h-screen">
 	{#if $page.data.session}
-		<h2>SvelteKit Auth Example</h2>
 		<img
 				src={$page.data.session.user?.image ?? 'https://img-cdn.pixlr.com/image-generator/history/65bb506dcb310754719cf81f/ede935de-1138-4f66-8ed7-44bd16efc709/medium.webp'}
 				class="avatar"

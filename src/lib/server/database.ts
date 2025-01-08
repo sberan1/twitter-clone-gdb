@@ -1,6 +1,8 @@
 import neo4j from 'neo4j-driver';
 import { NEO4J_PASSWORD, NEO4J_URI, NEO4J_USER } from '$env/static/private';
 import { v7 as uuid } from 'uuid';
+import * as bcrypt from 'bcrypt';
+
 
 export const driver = neo4j.driver(
 	NEO4J_URI,
@@ -13,6 +15,7 @@ export type PostAndUser = {
 	likes?: number;
 	commentCount?: number;
 	liked?: boolean;
+	shared?: boolean;
 	shares?: number;
 	comments?: Comment[];
 };
@@ -47,30 +50,39 @@ export async function getPosts(userEmail: string | null | undefined): Promise<
 		user: User;
 		likes: number;
 		liked: boolean;
-	}[]
+		shares: number;
+		shared: boolean;
+		commentCount: number;
+	}[] | null
 > {
-	const session = driver.session();
-	try {
-		const result = await session.run(
-			`
-      MATCH (u:User)-[:POSTED]->(p:Post)
-      OPTIONAL MATCH (p)<-[l:LIKED]-()
-      OPTIONAL MATCH (p)-[:HAS_COMMENT]->(c:Comment)
-      OPTIONAL MATCH (p)<-[userLike:LIKED]-(currentUser:User {email: $userEmail})
-      RETURN p, u, COUNT(l) AS likes, COUNT(userLike) > 0 AS liked, COUNT(c) AS commentCount
-      `,
-			{ userEmail }
-		);
-		return result.records.map((record) => ({
-			post: record.get('p').properties,
-			user: record.get('u').properties,
-			likes: record.get('likes').toNumber(),
-			liked: record.get('liked'),
-			commentCount: record.get('commentCount').toNumber()
-		}));
-	} finally {
-		await session.close();
+	if (!userEmail) {
+		return null;
 	}
+	const result = await driver.executeQuery(
+`
+	MATCH (n:User {email: $userEmail})-[:FOLLOWS]->(followed)-[:FOLLOWS]->(recommended)     
+	WHERE NOT exists((n)-[:FOLLOWS]->(recommended)) AND n <> recommended     
+	WITH n, recommended, collect(followed) AS recommendedBy, count(*) AS numberOfRecommendations    
+	 ORDER BY numberOfRecommendations DESC     
+	 MATCH (recommended)-[:POSTED|SHARED]->(p:Post)     
+	 OPTIONAL MATCH (p)<-[l:LIKED]-()     
+	 OPTIONAL MATCH (p)-[:HAS_COMMENT]->(c:Comment)     
+	 OPTIONAL MATCH (p)<-[userLike:LIKED]-(currentUser:User {email: $userEmail})     
+	 OPTIONAL MATCH (p)<-[s:SHARED]-()     
+	 OPTIONAL MATCH (p)<-[userShare:SHARED]-(currentUser:User {email: $userEmail})     
+	 RETURN p, recommended, COUNT(DISTINCT(l)) AS likes, COUNT(userLike) > 0 AS liked, COUNT(DISTINCT(c)) AS commentCount, COUNT(DISTINCT(s)) AS shares, COUNT(userShare) > 0 AS shared   `,
+  { userEmail }
+);
+
+return result.records.map((record) => ({
+  post: record.get('p').properties,
+  user: record.get('recommended').properties,
+  likes: record.get('likes').toNumber(),
+  liked: record.get('liked'),
+  commentCount: record.get('commentCount').toNumber(),
+  shares: record.get('shares').toNumber(),
+  shared: record.get('shared')
+}));
 }
 
 export async function createPost(userEmail: string | undefined, data: Post) {
@@ -79,9 +91,8 @@ export async function createPost(userEmail: string | undefined, data: Post) {
 	}
 	data.id = uuid();
 	data.createdAt = new Date().toLocaleString('cs-CZ');
-	const session = driver.session();
-	try {
-		const result = await session.run(
+
+		const result = await driver.executeQuery(
 			`
       MATCH (u:User {email: $userId})
       CREATE (p:Post $postData)
@@ -91,17 +102,12 @@ export async function createPost(userEmail: string | undefined, data: Post) {
 			{ userId: userEmail, postData: data }
 		);
 		return result.records[0].get('p').properties;
-	} finally {
-		await session.close();
-	}
 }
 
 export async function toggleLike(postId: string, userEmail: string, like: boolean): Promise<{ liked: boolean }> {
-	const session = driver.session();
-	try {
 		if (like) {
 			// Create a like if it doesn't exist and add the createdAt property
-			await session.run(
+			await driver.executeQuery(
 				`
         MATCH (u:User {email: $userEmail}), (p:Post {id: $postId})
         MERGE (u)-[l:LIKED]->(p)
@@ -112,7 +118,7 @@ export async function toggleLike(postId: string, userEmail: string, like: boolea
 			return { liked: true };
 		} else {
 			// Delete the like if it exists
-			await session.run(
+			await driver.executeQuery(
 				`
         MATCH (u:User {email: $userEmail})-[l:LIKED]->(p:Post {id: $postId})
         DELETE l
@@ -121,52 +127,50 @@ export async function toggleLike(postId: string, userEmail: string, like: boolea
 			);
 			return { liked: false };
 		}
-	} finally {
-		await session.close();
-	}
 }
 
-export async function getPost(postId: string | undefined, userEmail: string | null | undefined): Promise<PostAndUser | null > {
-	const session = driver.session();
+export async function getPost(postId: string | undefined, userEmail: string | null | undefined): Promise<PostAndUser | null>  {
 	if (!postId){
 		return null;
 	}
-	try {
-		const result = await session.run(
-			`
+
+	if (!userEmail){
+		userEmail = null;
+	}
+	const result = await driver.executeQuery(
+		`
       MATCH (u:User)-[:POSTED]->(p:Post {id: $postId})
       OPTIONAL MATCH (p)<-[l:LIKED]-()
       OPTIONAL MATCH (p)-[:HAS_COMMENT]->(c:Comment)
       OPTIONAL MATCH (p)<-[userLike:LIKED]-(currentUser:User {email: $userEmail})
-      RETURN p, u, COUNT(l) AS likes, COUNT(userLike) > 0 AS liked, COUNT(c) AS commentCount
+      OPTIONAL MATCH (p)<-[s:SHARED]-()
+      OPTIONAL MATCH (p)<-[userShare:SHARED]-(currentUser:User {email: $userEmail})
+      RETURN p, u, COUNT(DISTINCT(l)) AS likes, COUNT(userLike) > 0 AS liked, COUNT(DISTINCT(c)) AS commentCount, COUNT(DISTINCT(s)) AS shares, COUNT(userShare) > 0 AS shared
       `,
-			{ postId, userEmail }
-		);
+		{ postId, userEmail }
+	);
 
-		if (result.records.length === 0) {
-			return null;
-		}
-
-		const record = result.records[0];
-		return {
-			post: record.get('p').properties,
-			user: record.get('u').properties,
-			likes: record.get('likes').toNumber(),
-			liked: record.get('liked'),
-			commentCount: record.get('commentCount').toNumber(),
-			comments: await getComments(postId, userEmail)
-		};
-	} finally {
-		await session.close();
+	if (result.records.length === 0) {
+		return null;
 	}
+
+	const record = result.records[0];
+	return {
+		post: record.get('p').properties,
+		user: record.get('u').properties,
+		likes: record.get('likes').toNumber(),
+		liked: record.get('liked'),
+		commentCount: record.get('commentCount').toNumber(),
+		shares: record.get('shares').toNumber(),
+		shared: record.get('shared'),
+		comments: await getComments(postId, userEmail)
+	};
 }
 
 export async function createComment(postId: string, userEmail: string, content: string): Promise<Comment> {
-	const session = driver.session();
 	const commentId = uuid();
 	const createdAt = new Date().toISOString();
-	try {
-		const result = await session.run(
+		const result = await driver.executeQuery(
 			`
       MATCH (u:User {email: $userEmail}), (p:Post {id: $postId})
       CREATE (c:Comment {id: $commentId, content: $content, createdAt: $createdAt})
@@ -183,17 +187,13 @@ export async function createComment(postId: string, userEmail: string, content: 
 			createdAt: record.get('c').properties.createdAt,
 			user: record.get('u').properties
 		};
-	} finally {
-		await session.close();
-	}
+
 }
 
 export async function toggleCommentLike(commentId: string, userEmail: string, like: boolean): Promise<{ liked: boolean }> {
-	const session = driver.session();
-	try {
 		if (like) {
 			// Create a like if it doesn't exist and add the createdAt property
-			await session.run(
+			await driver.executeQuery(
 				`
         MATCH (u:User {email: $userEmail}), (c:Comment {id: $commentId})
         MERGE (u)-[l:LIKED]->(c)
@@ -204,7 +204,7 @@ export async function toggleCommentLike(commentId: string, userEmail: string, li
 			return { liked: true };
 		} else {
 			// Delete the like if it exists
-			await session.run(
+			await driver.executeQuery(
 				`
         MATCH (u:User {email: $userEmail})-[l:LIKED]->(c:Comment {id: $commentId})
         DELETE l
@@ -213,15 +213,11 @@ export async function toggleCommentLike(commentId: string, userEmail: string, li
 			);
 			return { liked: false };
 		}
-	} finally {
-		await session.close();
-	}
 }
 
 export async function getComments(postId: string, userEmail: string | null | undefined): Promise<Comment[]> {
-	const session = driver.session();
-	try {
-		const result = await session.run(
+
+		const result = await driver.executeQuery(
 			`
       MATCH (p:Post {id: $postId})-[:HAS_COMMENT]->(c:Comment)
       MATCH (u:User)-[:COMMENTED]->(c)
@@ -240,7 +236,86 @@ export async function getComments(postId: string, userEmail: string | null | und
 			likes: record.get('likes').toNumber(),
 			liked: record.get('liked')
 		}));
-	} finally {
-		await session.close();
+}
+
+	export async function createUser({ email, password, name }: { email: string; password: string; name: string }) {
+		const hashedPassword = await bcrypt.hash(password, 10);
+		const result = await driver.executeQuery(
+				`
+      CREATE (u:User {id: $id, email: $email, name: $name, pwHash: $pwHash})
+      RETURN u
+      `,
+				{ id: uuid(), email, name, pwHash: hashedPassword }
+			);
+			return result.records[0].get('u').properties;
+
 	}
+
+export async function toggleShare(postId: string, userEmail: string): Promise<{ shared: boolean }> {
+	const result = await driver.executeQuery(
+		`
+        MATCH (u:User {email: $userEmail}), (p:Post {id: $postId})
+        OPTIONAL MATCH (u)-[s:SHARED]->(p)
+        WITH u, p, s
+        WHERE s IS NULL
+        CREATE (u)-[:SHARED]->(p)
+        RETURN COUNT(s) = 0 AS shared
+        `,
+		{ userEmail, postId }
+	);
+
+	return { shared: result.records[0].get('shared') };
+}
+
+export async function followUser(followerEmail: string, followeeEmail: string, follow: boolean): Promise<{ followed: boolean }> {
+	if (follow) {
+		// Create a follow relationship if it doesn't exist
+		await driver.executeQuery(
+			`
+            MATCH (follower:User {email: $followerEmail}), (followee:User {email: $followeeEmail})
+            MERGE (follower)-[r:FOLLOWS]->(followee)
+            `,
+			{ followerEmail, followeeEmail }
+		);
+		return { followed: true };
+	} else {
+		// Delete the follow relationship if it exists
+		await driver.executeQuery(
+			`
+            MATCH (follower:User {email: $followerEmail})-[r:FOLLOWS]->(followee:User {email: $followeeEmail})
+            DELETE r
+            `,
+			{ followerEmail, followeeEmail }
+		);
+		return { followed: false };
+	}
+}
+
+export async function getUserInfo(
+	currentUserEmail: string | null | undefined,
+	userId: string | null | undefined
+): Promise<{
+	user: User,
+	following: boolean
+} | null> {
+	if (!userId || !currentUserEmail) {
+		return null;
+	}
+	const result = await driver.executeQuery(
+		`
+        MATCH (u:User {id: $userId})
+        OPTIONAL MATCH (u)<-[f:FOLLOWS]-(currentUser:User {email: $currentUserEmail})
+        RETURN u, COUNT(f) > 0 AS following
+        `,
+		{ userId, currentUserEmail }
+	);
+
+	if (result.records.length === 0) {
+		return null;
+	}
+
+	return {
+		user: result.records[0].get('u').properties,
+		following: result.records[0].get('following')
+	};
 }

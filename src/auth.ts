@@ -6,6 +6,7 @@ import { AUTH_SECRET, AUTH_GITHUB_SECRET, AUTH_GITHUB_ID, AUTH_DISCORD_ID, AUTH_
 import { driver } from "$lib/server/database"
 import { Neo4jAdapter} from '@auth/neo4j-adapter'
 import { v4 as uuid } from 'uuid'
+import * as bcrypt from 'bcrypt'
 
 
 const neo4jSession = driver.session();
@@ -36,12 +37,11 @@ export const { handle, signIn, signOut } = SvelteKitAuth(async () => {
 					const { email, password } = credentials;
 
 					if (!email || !password) {
-						throw new Error("Email and password are required");
+						throw new Error('Email and password are required');
 					}
 
-					const pwHash = saltAndHashPassword(password);
 
-					const user = await getUserFromDb(email, pwHash);
+					const user = await getUserFromDb(email, password);
 
 					if (!user) {
 						throw new Error("Invalid credentials");
@@ -85,25 +85,26 @@ export const { handle, signIn, signOut } = SvelteKitAuth(async () => {
 	return authOptions
 })
 
-function saltAndHashPassword(password: string) {
-	// logic to salt and hash password
-	return password
-}
 
 async function getUserFromDb(email, pwHash) {
 	// logic to verify if the user exists
-	const result = await neo4jSession.run(
-		'MATCH (u:User {email: $email, pwHash: $pwHash}) RETURN u',
-		{ email, pwHash }
+
+	const result = await driver.executeQuery(
+		'MATCH (u:User {email: $email}) RETURN u',
+		{ email }
 	);
 	if (result.records.length === 0) {
 		return null;
 	}
 	const user = result.records[0].get('u').properties;
+	if (!await bcrypt.compare(pwHash, user.pwHash)) {
+		return null;
+	}
 	return {
 		id: user.id,
 		name: user.name,
 		email: user.email,
 		pwHash: user.pwHash
 	}
+
 }
