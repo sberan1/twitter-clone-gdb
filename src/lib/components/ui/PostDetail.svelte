@@ -11,8 +11,6 @@ import Comment from '$lib/components/ui/Comment.svelte';
 
 	let comment = $state("");
 
-	console.log(data)
-
 </script>
 
 

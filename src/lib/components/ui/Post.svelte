@@ -48,7 +48,6 @@
 			postData.shares = postData.shared ? (postData.shares ?? 0) + 1 : postData.shares;
 		}
 	}
-	console.log(postData)
 </script>
 
 <Card class="w-2/4 my-5">

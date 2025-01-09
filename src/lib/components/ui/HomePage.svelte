@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 import { signIn } from '@auth/sveltekit/client';
 import { Label } from '$lib/components/ui/label/index.ts';
 import { Input } from '$lib/components/ui/input/index.ts';
@@ -8,11 +8,14 @@ import { Button } from '$lib/components/ui/button/index.ts';
 import  * as Card from '$lib/components/ui/card/index.ts';
 import Post from '$lib/components/ui/Post.svelte';
 import {page} from '$app/stores';
+import { Switch } from '$lib/components/ui/switch/index';
 
 export let data;
 
 let password = "";
 let email = "";
+let allPosts : boolean = false;
+
 
 </script>
 
@@ -20,9 +23,20 @@ let email = "";
 	{#if $page.data.session}
 		<div class="flex flex-col items-center justify-start h-screen">
 		<CreatePost />
+			<div class="inline-flex">
+			<p class="mx-2">Recommended Posts</p>
+		<Switch on:click={() => {allPosts = !allPosts}}></Switch>
+			<p class="mx-2">All Posts</p>
+			</div>
+			{#if allPosts === true}
+				{#each data.allPosts ?? [] as postData}
+					<Post {postData}></Post>
+				{/each}
+				{:else}
 		{#each data.posts ?? [] as postData}
 			<Post {postData}></Post>
 		{/each}
+		{/if}
 		</div>
 	{:else}
 		<div class="flex flex-col items-center justify-center h-screen">

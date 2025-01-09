@@ -167,6 +167,41 @@ export async function getPost(postId: string | undefined, userEmail: string | nu
 	};
 }
 
+export async function getAllPosts(): Promise<
+	{
+		post: Post;
+		user: User;
+		likes: number;
+		liked: boolean;
+		shares: number;
+		shared: boolean;
+		commentCount: number;
+	}[]
+> {
+	const result = await driver.executeQuery(
+		`
+    MATCH (u:User)-[:POSTED]->(p:Post)
+    OPTIONAL MATCH (p)<-[l:LIKED]-()
+    OPTIONAL MATCH (p)-[:HAS_COMMENT]->(c:Comment)
+    OPTIONAL MATCH (p)<-[userLike:LIKED]-(currentUser:User)
+    OPTIONAL MATCH (p)<-[s:SHARED]-()
+    OPTIONAL MATCH (p)<-[userShare:SHARED]-(currentUser:User)
+    RETURN p, u, COUNT(DISTINCT(l)) AS likes, COUNT(userLike) > 0 AS liked, COUNT(DISTINCT(c)) AS commentCount, COUNT(DISTINCT(s)) AS shares, COUNT(userShare) > 0 AS shared
+    ORDER BY p.createdAt DESC
+    `
+	);
+
+	return result.records.map((record) => ({
+		post: record.get('p').properties,
+		user: record.get('u').properties,
+		likes: record.get('likes').toNumber(),
+		liked: record.get('liked'),
+		commentCount: record.get('commentCount').toNumber(),
+		shares: record.get('shares').toNumber(),
+		shared: record.get('shared')
+	}));
+}
+
 export async function createComment(postId: string, userEmail: string, content: string): Promise<Comment> {
 	const commentId = uuid();
 	const createdAt = new Date().toISOString();

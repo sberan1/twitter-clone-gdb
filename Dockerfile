@@ -13,6 +13,6 @@ COPY . .
 RUN npm install
 RUN npx vite build
 
-EXPOSE 4250
+EXPOSE 5173
 
 CMD [ "sh", "entrypoint.sh" ]
